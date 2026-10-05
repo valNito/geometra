@@ -1,0 +1,16 @@
+#pragma once
+
+// Generado por CMake a partir de version.hpp.in: no editar a mano.
+#define GEOMETRA_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define GEOMETRA_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define GEOMETRA_VERSION_PATCH @PROJECT_VERSION_PATCH@
+#define GEOMETRA_VERSION_STRING "@PROJECT_VERSION@"
+
+namespace geo {
+
+inline constexpr int version_major = GEOMETRA_VERSION_MAJOR;
+inline constexpr int version_minor = GEOMETRA_VERSION_MINOR;
+inline constexpr int version_patch = GEOMETRA_VERSION_PATCH;
+inline constexpr const char* version_string = GEOMETRA_VERSION_STRING;
+
+}  // namespace geo

@@ -1,0 +1,88 @@
+Geometra - procedencia del código y licencias de terceros
+=========================================================
+
+Este archivo documenta el código y los algoritmos de terceros presentes en Geometra y las
+condiciones bajo las que se incorporan. Ninguno impone restricciones a la distribución del
+proyecto bajo su licencia, MIT (archivo LICENSE). La atribución que sigue se incluye por corrección académica,
+para dejar constancia de la procedencia y para respetar el derecho de paternidad de los
+autores. Revisión realizada el 2026-10-05 contra las fuentes originales.
+
+
+1. Predicados geométricos exactos (src/predicates.cpp)
+------------------------------------------------------
+
+Adaptación a C++ de las rutinas orient2d(), orient2dadapt() y
+fast_expansion_sum_zeroelim(), y de las constantes de cota de error que calcula
+exactinit(), del archivo:
+
+    Routines for Arbitrary Precision Floating-point Arithmetic
+    and Fast Robust Geometric Predicates (predicates.c), 18 de mayo de 1996.
+    Jonathan Richard Shewchuk, School of Computer Science, Carnegie Mellon University.
+    https://www.cs.cmu.edu/~quake/robust.html
+    https://www.cs.cmu.edu/afs/cs/project/quake/public/code/predicates.c
+
+Licencia: DOMINIO PÚBLICO, por dedicación expresa del autor. La cabecera del archivo dice
+"Placed in the public domain by Jonathan Richard Shewchuk" y su página web añade "This code
+is in the public domain". No impone ninguna condición de uso, atribución ni redistribución.
+
+Qué se conserva del original: la estructura de las etapas A-D del predicado adaptativo, la
+secuencia exacta de operaciones (de la que depende la demostración de corrección), los
+nombres de las variables intermedias y las constantes de error. Qué es propio de Geometra:
+la expresión en C++ (tipos, lambdas, std::span, comentarios), el uso de std::fma en
+two_product() en lugar de la partición de Dekker, y la versión de
+fast_expansion_sum_zeroelim() que no lee fuera de los arreglos.
+
+Artículo que describe los algoritmos y demuestra las cotas de error:
+
+    J. R. Shewchuk, "Adaptive Precision Floating-Point Arithmetic and Fast Robust
+    Geometric Predicates", Discrete & Computational Geometry 18(3):305-363, 1997.
+    Versión preliminar: informe técnico CMU-CS-96-140, Carnegie Mellon University, 1996.
+
+Aclaración: Geometra NO contiene código de Triangle, del mismo autor. Triangle tiene
+derechos reservados y su licencia restringe el uso comercial; predicates.c es un archivo
+independiente y de dominio público.
+
+
+2. Transformaciones libres de error (src/predicates.cpp)
+--------------------------------------------------------
+
+Algoritmos clásicos de la literatura, no sujetos a licencia alguna:
+
+  - TwoSum: D. E. Knuth, The Art of Computer Programming, vol. 2: Seminumerical
+    Algorithms, sección 4.2.2, Addison-Wesley, 1969 (también O. Møller, 1965).
+  - FastTwoSum y la técnica de doble palabra: T. J. Dekker, "A floating-point technique
+    for extending the available precision", Numerische Mathematik 18:224-242, 1971.
+  - TwoProduct mediante FMA: T. Ogita, S. M. Rump y S. Oishi, "Accurate Sum and Dot
+    Product", SIAM Journal on Scientific Computing 26(6):1955-1988, 2005.
+
+
+3. Envolvente convexa (src/convex_hull.cpp)
+-------------------------------------------
+
+Implementación propia del algoritmo de cadena monótona:
+
+    A. M. Andrew, "Another efficient algorithm for convex hulls in two dimensions",
+    Information Processing Letters 9(5):216-219, 1979.
+
+El algoritmo no está sujeto a licencia y el código no deriva de ninguna implementación
+concreta.
+
+
+4. Datos de prueba (tests/test_predicates.cpp)
+----------------------------------------------
+
+El caso p = (0.5, 0.5), q = (12, 12), r = (24, 24) reutiliza únicamente los valores
+numéricos del ejemplo publicado en:
+
+    L. Kettner, K. Mehlhorn, S. Pion, S. Schirra y C. Yap, "Classroom examples of
+    robustness problems in geometric computations", Computational Geometry: Theory and
+    Applications 40(1):61-78, 2008.
+
+
+5. Todo lo demás
+----------------
+
+Point2D (include/geometra/point.hpp), el área por la fórmula del cordón (src/polygon.cpp),
+el framework de tests (tests/geotest.hpp), los tests, el ejemplo, el benchmark, los
+archivos de CMake y la documentación son código y texto originales de Geometra. El
+proyecto no tiene dependencias externas: solo la biblioteca estándar de C++20.

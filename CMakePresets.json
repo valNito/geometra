@@ -1,0 +1,35 @@
+{
+    "version": 3,
+    "cmakeMinimumRequired": { "major": 3, "minor": 21, "patch": 0 },
+    "configurePresets": [
+        {
+            "name": "release",
+            "displayName": "Release",
+            "binaryDir": "${sourceDir}/build/release",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" }
+        },
+        {
+            "name": "debug",
+            "displayName": "Debug",
+            "binaryDir": "${sourceDir}/build/debug",
+            "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug" }
+        },
+        {
+            "name": "asan",
+            "displayName": "Debug + AddressSanitizer/UBSan",
+            "inherits": "debug",
+            "binaryDir": "${sourceDir}/build/asan",
+            "cacheVariables": { "GEOMETRA_SANITIZERS": "ON" }
+        }
+    ],
+    "buildPresets": [
+        { "name": "release", "configurePreset": "release" },
+        { "name": "debug", "configurePreset": "debug" },
+        { "name": "asan", "configurePreset": "asan" }
+    ],
+    "testPresets": [
+        { "name": "release", "configurePreset": "release", "output": { "outputOnFailure": true } },
+        { "name": "debug", "configurePreset": "debug", "output": { "outputOnFailure": true } },
+        { "name": "asan", "configurePreset": "asan", "output": { "outputOnFailure": true } }
+    ]
+}

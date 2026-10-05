@@ -1,0 +1,3 @@
+add_executable(bench_convex_hull bench_convex_hull.cpp)
+target_link_libraries(bench_convex_hull PRIVATE geometra::geometra)
+geometra_enable_warnings(bench_convex_hull)
