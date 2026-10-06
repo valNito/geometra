@@ -117,7 +117,9 @@ void check_invariants(const Points& pts, const Points& h) {
     CHECK(strictly_convex_ccw(h));
     CHECK(!has_duplicates(h));
     if (!pts.empty()) CHECK_EQ(h.front(), *std::ranges::min_element(pts));
-    if (h.size() >= 3) CHECK(geo::signed_area(h) > 0.0);
+    // La orientación CCW ya la verifica strictly_convex_ccw con el predicado exacto.
+    // signed_area es una magnitud en double: en envolventes casi degeneradas puede
+    // redondear a <= 0 aunque la envolvente sea correcta, así que no sirve de invariante.
 }
 
 bool same_set(const Points& a, const Points& b) { return sorted_unique(a) == sorted_unique(b); }
