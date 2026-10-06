@@ -1,0 +1,70 @@
+# Compila Geometra y corre sus tests en Linux (GCC y Clang) y Windows (MSVC)
+# usando los presets de CMakePresets.json.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: "Linux GCC · release",   os: ubuntu-24.04, compiler: g++,     preset: release, config: Release }
+          - { name: "Linux GCC · asan",      os: ubuntu-24.04, compiler: g++,     preset: asan,    config: Debug }
+          - { name: "Linux Clang · release", os: ubuntu-24.04, compiler: clang++, preset: release, config: Release }
+          - { name: "Linux Clang · asan",    os: ubuntu-24.04, compiler: clang++, preset: asan,    config: Debug }
+          # El preset asan usa flags -fsanitize de GCC/Clang: no aplica a MSVC.
+          - { name: "Windows MSVC · release", os: windows-2022, compiler: "", preset: release, config: Release }
+          - { name: "Windows MSVC · debug",   os: windows-2022, compiler: "", preset: debug,   config: Debug }
+
+    defaults:
+      run:
+        shell: bash
+
+    env:
+      # Que cualquier hallazgo de UBSan haga fallar el test en vez de solo imprimirse.
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+      ASAN_OPTIONS: detect_leaks=1:strict_string_checks=1
+
+    steps:
+      - uses: actions/checkout@v5
+
+      # ASan puede caerse con la entropía de ASLR alta de los kernels recientes
+      # de Ubuntu 24.04; 28 bits es el valor compatible.
+      - name: Ajustar ASLR para ASan
+        if: matrix.preset == 'asan'
+        run: sudo sysctl -w vm.mmap_rnd_bits=28
+
+      - name: Configurar
+        env:
+          COMPILER: ${{ matrix.compiler }}
+          PRESET: ${{ matrix.preset }}
+        run: |
+          args=()
+          if [[ -n "$COMPILER" ]]; then
+            args+=("-DCMAKE_CXX_COMPILER=$COMPILER")
+          fi
+          cmake --preset "$PRESET" "${args[@]}"
+
+      # En Windows el generador por defecto es Visual Studio (multi-configuración):
+      # ahí el CMAKE_BUILD_TYPE del preset no rige y la configuración se elige con
+      # --config / -C. En Linux (Makefiles, una sola configuración) se ignoran.
+      - name: Compilar
+        run: cmake --build --preset ${{ matrix.preset }} --config ${{ matrix.config }} --parallel
+
+      - name: Tests
+        run: ctest --preset ${{ matrix.preset }} -C ${{ matrix.config }}
