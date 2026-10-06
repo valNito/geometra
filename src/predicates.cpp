@@ -1,18 +1,21 @@
-// Predicado de orientación con signo exacto.
+// Predicados de orientación y del círculo con signo exacto.
 //
 // PROCEDENCIA Y LICENCIA
 // ----------------------
-// Este archivo es una adaptación a C++ de las rutinas orient2d(), orient2dadapt() y
-// fast_expansion_sum_zeroelim() del archivo predicates.c de Jonathan Richard Shewchuk
+// Este archivo es una adaptación a C++ de las rutinas orient2d(), orient2dadapt(),
+// incircle() (solo su filtro inicial), incircleexact(), fast_expansion_sum_zeroelim() y
+// scale_expansion_zeroelim() del archivo predicates.c de Jonathan Richard Shewchuk
 // (School of Computer Science, Carnegie Mellon University, 18 de mayo de 1996), que su
 // autor colocó en el dominio público ("Placed in the public domain by Jonathan Richard
 // Shewchuk"; su página web añade "This code is in the public domain"). Las constantes
-// kResultErrBound y kCcwErrBound{A,B,C} son las que ese archivo calcula en exactinit() y
-// que el artículo citado demuestra. Se conserva deliberadamente la estructura de las
+// kResultErrBound, kCcwErrBound{A,B,C} y kIccErrBoundA son las que ese archivo calcula
+// en exactinit() y que el artículo citado demuestra. Se conserva deliberadamente la estructura de las
 // etapas A-D y la secuencia exacta de operaciones, porque de ellas depende la prueba de
 // corrección; la expresión en C++ (tipos, lambdas, std::span, comentarios) es propia.
 // Diferencias respecto del original: two_product() usa std::fma en lugar de la partición
-// de Dekker (Split), y fast_expansion_sum_zeroelim() no lee más allá de los arreglos.
+// de Dekker (Split), fast_expansion_sum_zeroelim() no lee más allá de los arreglos, y en
+// incircle() las etapas intermedias B y C de incircleadapt() se reemplazan por una etapa
+// exacta propia sobre las diferencias (véase incircle_exact_translated()).
 // Nada de este archivo proviene de Triangle, del mismo autor, cuya licencia sí es
 // restrictiva. Los detalles y referencias completas están en NOTICE, en la raíz.
 //
@@ -33,6 +36,11 @@
 // cota de su error de redondeo. Si el valor supera la cota, su signo es correcto y se
 // devuelve de inmediato (es el caso habitual). Si no, se recalcula con precisión creciente
 // —etapas B y C— y, solo en el peor caso, se obtiene el valor exacto como expansión (D).
+//
+// incircle() usa el mismo filtro inicial y, si no basta, calcula el determinante exacto:
+// sobre las diferencias respecto de `d` cuando estas no tuvieron error de redondeo (caso
+// típico de coordenadas enteras o en rejilla, con muchos puntos concíclicos), y sobre las
+// coordenadas originales, sin trasladar, en el caso general.
 //
 // REQUISITOS DEL ENTORNO
 // ----------------------
@@ -63,6 +71,7 @@ constexpr double kResultErrBound = (3.0 + 8.0 * kEpsilon) * kEpsilon;
 constexpr double kCcwErrBoundA = (3.0 + 16.0 * kEpsilon) * kEpsilon;
 constexpr double kCcwErrBoundB = (2.0 + 12.0 * kEpsilon) * kEpsilon;
 constexpr double kCcwErrBoundC = (9.0 + 64.0 * kEpsilon) * kEpsilon * kEpsilon;
+constexpr double kIccErrBoundA = (10.0 + 96.0 * kEpsilon) * kEpsilon;
 
 /// Par (hi, lo) tal que hi + lo es, exactamente, el resultado de una operación.
 struct TwoDouble {
@@ -164,6 +173,137 @@ std::size_t fast_expansion_sum_zeroelim(std::span<const double> e, std::span<con
     return hi;
 }
 
+/// Producto de una expansión no solapada por un double, eliminando los ceros del
+/// resultado. Devuelve cuántos componentes escribió en `h`, siempre al menos uno. `h` debe
+/// tener capacidad para 2 * e.size().
+std::size_t scale_expansion_zeroelim(std::span<const double> e, double b,
+                                     std::span<double> h) noexcept {
+    std::size_t hi = 0;
+    const auto emit = [&](double v) noexcept {
+        if (v != 0.0) h[hi++] = v;
+    };
+
+    const TwoDouble first = two_product(e[0], b);
+    double q = first.hi;
+    emit(first.lo);
+    for (std::size_t i = 1; i < e.size(); ++i) {
+        const TwoDouble product = two_product(e[i], b);
+        const TwoDouble sum = two_sum(q, product.lo);
+        emit(sum.lo);
+        const TwoDouble carry = fast_two_sum(product.hi, sum.hi);
+        q = carry.hi;
+        emit(carry.lo);
+    }
+    if (q != 0.0 || hi == 0) h[hi++] = q;
+    return hi;
+}
+
+/// u.x * v.y - v.x * u.y exacto, como expansión de 4 componentes.
+std::array<double, 4> cross_exact(Point2D u, Point2D v) noexcept {
+    const TwoDouble left = two_product(u.x, v.y);
+    const TwoDouble right = two_product(v.x, u.y);
+    return two_two_diff(left.hi, left.lo, right.hi, right.lo);
+}
+
+/// (x² + y²) · e como expansión, en `h`. Requiere e.size() <= 12 y capacidad 8 * e.size().
+std::size_t lift_scale(std::span<const double> e, double x, double y,
+                       std::span<double> h) noexcept {
+    std::array<double, 24> ex{};
+    std::array<double, 48> exx{};
+    std::array<double, 24> ey{};
+    std::array<double, 48> eyy{};
+    const std::size_t exlen = scale_expansion_zeroelim(e, x, ex);
+    const std::size_t exxlen = scale_expansion_zeroelim(std::span{ex}.first(exlen), x, exx);
+    const std::size_t eylen = scale_expansion_zeroelim(e, y, ey);
+    const std::size_t eyylen = scale_expansion_zeroelim(std::span{ey}.first(eylen), y, eyy);
+    return fast_expansion_sum_zeroelim(std::span{exx}.first(exxlen), std::span{eyy}.first(eyylen),
+                                       h);
+}
+
+/// e + f + g como expansión, en `h` (capacidad 12). Las tres entradas tienen 4 componentes.
+std::size_t sum3(const std::array<double, 4>& e, const std::array<double, 4>& f,
+                 const std::array<double, 4>& g, std::span<double> h) noexcept {
+    std::array<double, 8> ef{};
+    const std::size_t eflen = fast_expansion_sum_zeroelim(e, f, ef);
+    return fast_expansion_sum_zeroelim(std::span{ef}.first(eflen), g, h);
+}
+
+std::array<double, 4> negated(std::array<double, 4> e) noexcept {
+    for (double& v : e) v = -v;
+    return e;
+}
+
+/// Valor exacto de incircle cuando las seis diferencias respecto de `d` son exactas: el
+/// determinante 3x3 trasladado de la cabecera, evaluado con expansiones.
+double incircle_exact_translated(double adx, double ady, double bdx, double bdy, double cdx,
+                                 double cdy) noexcept {
+    const std::array<double, 4> bc = cross_exact({bdx, bdy}, {cdx, cdy});
+    const std::array<double, 4> ca = cross_exact({cdx, cdy}, {adx, ady});
+    const std::array<double, 4> ab = cross_exact({adx, ady}, {bdx, bdy});
+
+    std::array<double, 32> adet{};
+    std::array<double, 32> bdet{};
+    std::array<double, 32> cdet{};
+    const std::size_t alen = lift_scale(bc, adx, ady, adet);
+    const std::size_t blen = lift_scale(ca, bdx, bdy, bdet);
+    const std::size_t clen = lift_scale(ab, cdx, cdy, cdet);
+
+    std::array<double, 64> abdet{};
+    std::array<double, 96> det{};
+    const std::size_t ablen = fast_expansion_sum_zeroelim(std::span{adet}.first(alen),
+                                                          std::span{bdet}.first(blen), abdet);
+    const std::size_t len = fast_expansion_sum_zeroelim(std::span{abdet}.first(ablen),
+                                                        std::span{cdet}.first(clen), det);
+    return det[len - 1];
+}
+
+/// Valor exacto de incircle en el caso general, sin trasladar: el determinante 4x4 de las
+/// filas (x, y, x² + y², 1) de a, b, c y d, desarrollado por Laplace en los pares de
+/// columnas (x, y) | (x² + y², 1):
+///
+///     det = |a|²·(bc + cd + db) - |b|²·(cd + da + ac) + |c|²·(da + ab + bd)
+///           - |d|²·(ab + bc + ca),        con  uv = u.x·v.y - v.x·u.y.
+///
+/// Cada menor 2x2 es exacto con 4 componentes; la expansión final tiene hasta 384.
+double incircle_exact(Point2D a, Point2D b, Point2D c, Point2D d) noexcept {
+    const std::array<double, 4> ab = cross_exact(a, b);
+    const std::array<double, 4> bc = cross_exact(b, c);
+    const std::array<double, 4> cd = cross_exact(c, d);
+    const std::array<double, 4> da = cross_exact(d, a);
+    const std::array<double, 4> ac = cross_exact(a, c);
+    const std::array<double, 4> bd = cross_exact(b, d);
+
+    // Los coeficientes de |b|² y |d|² se calculan ya negados.
+    std::array<double, 12> bcd{};
+    std::array<double, 12> neg_cda{};
+    std::array<double, 12> dab{};
+    std::array<double, 12> neg_abc{};
+    const std::size_t bcdlen = sum3(bc, cd, negated(bd), bcd);
+    const std::size_t cdalen = sum3(negated(cd), negated(da), negated(ac), neg_cda);
+    const std::size_t dablen = sum3(da, ab, bd, dab);
+    const std::size_t abclen = sum3(negated(ab), negated(bc), ac, neg_abc);
+
+    std::array<double, 96> adet{};
+    std::array<double, 96> bdet{};
+    std::array<double, 96> cdet{};
+    std::array<double, 96> ddet{};
+    const std::size_t alen = lift_scale(std::span{bcd}.first(bcdlen), a.x, a.y, adet);
+    const std::size_t blen = lift_scale(std::span{neg_cda}.first(cdalen), b.x, b.y, bdet);
+    const std::size_t clen = lift_scale(std::span{dab}.first(dablen), c.x, c.y, cdet);
+    const std::size_t dlen = lift_scale(std::span{neg_abc}.first(abclen), d.x, d.y, ddet);
+
+    std::array<double, 192> abdet{};
+    std::array<double, 192> cddet{};
+    std::array<double, 384> det{};
+    const std::size_t ablen = fast_expansion_sum_zeroelim(std::span{adet}.first(alen),
+                                                          std::span{bdet}.first(blen), abdet);
+    const std::size_t cdlen = fast_expansion_sum_zeroelim(std::span{cdet}.first(clen),
+                                                          std::span{ddet}.first(dlen), cddet);
+    const std::size_t len = fast_expansion_sum_zeroelim(std::span{abdet}.first(ablen),
+                                                        std::span{cddet}.first(cdlen), det);
+    return det[len - 1];
+}
+
 /// Etapas B, C y D de orient2d. Solo se llega aquí si el filtro inicial (A) no pudo
 /// garantizar el signo. `detsum` es la suma de los valores absolutos de ambos productos.
 double orient2d_adaptive(Point2D a, Point2D b, Point2D c, double detsum) noexcept {
@@ -243,6 +383,46 @@ double orient2d(Point2D a, Point2D b, Point2D c) noexcept {
     if (det >= errbound || -det >= errbound) return det;
 
     return orient2d_adaptive(a, b, c, detsum);
+}
+
+double incircle(Point2D a, Point2D b, Point2D c, Point2D d) noexcept {
+    const double adx = a.x - d.x;
+    const double bdx = b.x - d.x;
+    const double cdx = c.x - d.x;
+    const double ady = a.y - d.y;
+    const double bdy = b.y - d.y;
+    const double cdy = c.y - d.y;
+
+    const double bdxcdy = bdx * cdy;
+    const double cdxbdy = cdx * bdy;
+    const double alift = adx * adx + ady * ady;
+
+    const double cdxady = cdx * ady;
+    const double adxcdy = adx * cdy;
+    const double blift = bdx * bdx + bdy * bdy;
+
+    const double adxbdy = adx * bdy;
+    const double bdxady = bdx * ady;
+    const double clift = cdx * cdx + cdy * cdy;
+
+    const double det =
+        alift * (bdxcdy - cdxbdy) + blift * (cdxady - adxcdy) + clift * (adxbdy - bdxady);
+
+    // Etapa A: cota rigurosa del error de redondeo de `det` (Shewchuk).
+    const double permanent = (std::fabs(bdxcdy) + std::fabs(cdxbdy)) * alift +
+                             (std::fabs(cdxady) + std::fabs(adxcdy)) * blift +
+                             (std::fabs(adxbdy) + std::fabs(bdxady)) * clift;
+    const double errbound = kIccErrBoundA * permanent;
+    if (det > errbound || -det > errbound) return det;
+
+    // Si las diferencias no tuvieron error de redondeo, el determinante trasladado es el
+    // verdadero y basta con evaluarlo exactamente; si no, se evalúa sin trasladar.
+    if (two_diff_tail(a.x, d.x, adx) == 0.0 && two_diff_tail(b.x, d.x, bdx) == 0.0 &&
+        two_diff_tail(c.x, d.x, cdx) == 0.0 && two_diff_tail(a.y, d.y, ady) == 0.0 &&
+        two_diff_tail(b.y, d.y, bdy) == 0.0 && two_diff_tail(c.y, d.y, cdy) == 0.0) {
+        return incircle_exact_translated(adx, ady, bdx, bdy, cdx, cdy);
+    }
+    return incircle_exact(a, b, c, d);
 }
 
 }  // namespace geo

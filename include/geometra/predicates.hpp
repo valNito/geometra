@@ -51,4 +51,22 @@ inline std::ostream& operator<<(std::ostream& os, Orientation o) { return os << 
     return Orientation::collinear;
 }
 
+/// Determinante del test del círculo
+///
+///     | a.x - d.x   a.y - d.y   (a.x - d.x)² + (a.y - d.y)² |
+///     | b.x - d.x   b.y - d.y   (b.x - d.x)² + (b.y - d.y)² |
+///     | c.x - d.x   c.y - d.y   (c.x - d.x)² + (c.y - d.y)² |
+///
+/// Si (a, b, c) está en sentido antihorario, es positivo cuando `d` queda estrictamente
+/// dentro de la circunferencia que pasa por a, b y c, negativo cuando queda fuera y cero
+/// cuando los cuatro puntos son concíclicos. Si (a, b, c) está en sentido horario, el
+/// signo se invierte.
+///
+/// Igual que en `orient2d()`, el signo es siempre el correcto (filtro de Shewchuk y, si
+/// no basta, evaluación exacta con expansiones) y la magnitud es aproximada.
+///
+/// Precondición: coordenadas finitas, sin desbordamiento ni subdesbordamiento en
+/// productos de hasta cuatro factores.
+[[nodiscard]] double incircle(Point2D a, Point2D b, Point2D c, Point2D d) noexcept;
+
 }  // namespace geo

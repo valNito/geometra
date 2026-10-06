@@ -48,7 +48,8 @@ configure_file(include/geometra/version.hpp.in
 add_library(geometra
     src/predicates.cpp
     src/polygon.cpp
-    src/convex_hull.cpp)
+    src/convex_hull.cpp
+    src/delaunay.cpp)
 add_library(geometra::geometra ALIAS geometra)
 
 target_compile_features(geometra PUBLIC cxx_std_20)
